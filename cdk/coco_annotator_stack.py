@@ -26,15 +26,17 @@ class CocoAnnotatorStack(cdk.Stack):
             allow_all_outbound=True
         )
         security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(22), "allow ssh access from the world")
+        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), "allows HTTP access from Internet")
+        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443), "allows HTTPS access from Internet")
 
         # Machine OS
         amzn_linux = ec2.MachineImage.latest_amazon_linux()
 
         # Instance
         instance = ec2.Instance(self, "Instance",
-    # Showing the most complex setup, if you have simpler requirements
-    # you can use `CloudFormationInit.fromElements()`.
-    init=ec2.CloudFormationInit.from_config_sets(
+                # Showing the most complex setup, if you have simpler requirements
+                # you can use `CloudFormationInit.fromElements()`.
+                init=ec2.CloudFormationInit.from_config_sets(
                 config_sets={
                     # Applies the configs below in this order
                     "default": ["yumPreinstall", "config"]
@@ -42,22 +44,21 @@ class CocoAnnotatorStack(cdk.Stack):
                 configs={
                     "yum_preinstall": ec2.InitConfig([
                         # Install an Amazon Linux package using yum
-                        ec2.InitPackage.yum("git")
+                        ec2.InitPackage.yum("git"),
+                        ec2.InitPackage.yum("docker"),
+                        ec2.InitPackage.yum("py-pip"),
+                        ec2.InitPackage.yum("python3-dev"),
+                        ec2.InitPackage.yum("libffi-dev"),
+                        ec2.InitPackage.yum("openssl-dev"),
+                        ec2.InitPackage.yum("gcc"),
+                        ec2.InitPackage.yum("libc-dev"),
+                        ec2.InitPackage.yum("rust"),
+                        ec2.InitPackage.yum("cargo"),
+                        ec2.InitPackage.yum("make"),
+                        ec2.InitPackage.python("docker-compose"),
                     ]),
                     "config": ec2.InitConfig([
-                        # Create a JSON file from tokens (can also create other files)
-                        ec2.InitFile.from_object("/etc/stack.json", {
-                            "stack_id": self.stack_id,
-                            "stack_name": self.stack_name,
-                            "region": self.region
-                        }),
-
-                        # Create a group and user
-                        ec2.InitGroup.from_name("my-group"),
-                        ec2.InitUser.from_name("my-user"),
-
-                        # Install an RPM from the internet
-                        ec2.InitPackage.rpm("http://mirrors.ukfast.co.uk/sites/dl.fedoraproject.org/pub/epel/8/Everything/x86_64/Packages/r/rubygem-git-1.5.0-2.el8.noarch.rpm")
+                        ec2.InitSource.from_git_hub("coco-annotator", "developmentseed", "coco-annotator")
                     ])
                 }
             ),
@@ -65,20 +66,25 @@ class CocoAnnotatorStack(cdk.Stack):
                 config_sets=["default"],
                 timeout=cdk.Duration.minutes(30),
             ),
-            instance_type=ec2.InstanceType("t2.medium"),
+            instance_type=ec2.InstanceType.of(
+                ec2.InstanceClass.STANDARD5,
+                ec2.InstanceSize.MEDIUM
+            ),
             machine_image = amzn_linux, 
             vpc = vpc,
-
+            key_name="aws-devseed-rodrigo"
         )
 
         role = iam.Role(self, "coco-annotator-role",
             assumed_by=iam.AccountRootPrincipal()
         )
         volume = ec2.Volume(self, "Volume",
-            availability_zone=self.region,
+            availability_zone=core.Stack.of(self).availability_zones[0],
             size=cdk.Size.gibibytes(30)
         )
         volume.grant_attach_volume(role, [instance])
+
+        core.CfnOutput(self, "Instance-IP", value=instance.instance_public_ip)
 
 
 
