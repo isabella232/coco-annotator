@@ -16,7 +16,7 @@ class CocoAnnotatorStack(cdk.Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         # S3 bucket
-        bucket = s3.Bucket(self, "coco-annotator-bucket")
+        bucket = s3.Bucket(self, "coco-annotator-bucket", bucket_name="coco-annotator-stack-bucket")
 
         # Networking
         vpc = ec2.Vpc(self, "coco-annotator-vpc")
@@ -67,12 +67,13 @@ class CocoAnnotatorStack(cdk.Stack):
                 timeout=cdk.Duration.minutes(30),
             ),
             instance_type=ec2.InstanceType.of(
-                ec2.InstanceClass.STANDARD5,
+                ec2.InstanceClass.BURSTABLE2,
                 ec2.InstanceSize.MEDIUM
             ),
             machine_image = amzn_linux, 
             vpc = vpc,
-            key_name="aws-devseed-rodrigo"
+            vpc_subnets=vpc.public_subnets[0],
+            key_name="rodrigo-coco-annotator"
         )
 
         role = iam.Role(self, "coco-annotator-role",
@@ -80,12 +81,10 @@ class CocoAnnotatorStack(cdk.Stack):
         )
         volume = ec2.Volume(self, "Volume",
             availability_zone=core.Stack.of(self).availability_zones[0],
-            size=cdk.Size.gibibytes(30)
+            size=cdk.Size.gibibytes(30),
+            volume_name="coco-annotator-volume"
         )
         volume.grant_attach_volume(role, [instance])
-
-        core.CfnOutput(self, "Instance-IP", value=instance.instance_public_ip)
-
 
 
 
